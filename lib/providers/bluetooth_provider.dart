@@ -11,6 +11,7 @@ import '../services/ble_service.dart';
 import '../utils/distance.dart';
 import '../models/device.dart';
 import '../constants/commands.dart';
+import '../constants/ble_uuids.dart';
 
 class BluetoothProvider extends ChangeNotifier {
   BluetoothProvider() {
@@ -96,11 +97,29 @@ class BluetoothProvider extends ChangeNotifier {
 
   // RSSI smoothing (exponential moving average)
   double? _emaRssi;
+  double _smoothingAlpha = 0.3; // 0..1, higher = more responsive
   // Hysteresis: percent of threshold for exit band (e.g., 10%)
   double _hysteresisFraction = 0.1;
   // Rate limit for command sends
   DateTime _lastCommandSentAt = DateTime.fromMillisecondsSinceEpoch(0);
   Duration _minCommandInterval = const Duration(milliseconds: 800);
+
+  // Expose tuning APIs
+  void setSmoothingAlpha(double alpha) {
+    // constrain [0.0, 1.0]
+    final double a = alpha.clamp(0.0, 1.0);
+    // reinitialize smoothing to avoid long tail if alpha changes drastically
+    _emaRssi = null;
+    _smoothingAlpha = a;
+  }
+
+  void setHysteresisFraction(double fraction) {
+    _hysteresisFraction = fraction.clamp(0.0, 1.0);
+  }
+
+  void setMinCommandInterval(Duration d) {
+    _minCommandInterval = d;
+  }
 
   double? get latestDistanceMeters => _emaRssi == null
       ? null
@@ -157,9 +176,15 @@ class BluetoothProvider extends ChangeNotifier {
     _isScanning = true;
     notifyListeners();
 
+    // Build filters if service UUID known
+    final List<Guid> serviceFilters = <Guid>[];
+    if (BleUuids.preferredService != null) {
+      serviceFilters.add(BleUuids.preferredService!);
+    }
     await FlutterBluePlus.startScan(
       timeout: const Duration(seconds: 10),
       androidUsesFineLocation: true,
+      withServices: serviceFilters,
     );
 
     await _scanSub?.cancel();
@@ -168,7 +193,8 @@ class BluetoothProvider extends ChangeNotifier {
         final String? deviceName = r.device.platformName.isNotEmpty
             ? r.device.platformName
             : r.advertisementData.advName;
-        if (namePrefix != null && (deviceName == null || !deviceName.startsWith(namePrefix))) {
+        final String? effectivePrefix = namePrefix ?? BleUuids.namePrefix;
+        if (effectivePrefix != null && (deviceName == null || !deviceName.startsWith(effectivePrefix))) {
           continue;
         }
         final DiscoveredDevice device = DiscoveredDevice(
@@ -227,7 +253,7 @@ class BluetoothProvider extends ChangeNotifier {
     _bleService.startRssiPolling(device, (int rssi) {
       _latestRssi = rssi;
       // EMA smoothing: ema = alpha * rssi + (1-alpha) * prev
-      const double alpha = 0.3;
+      final double alpha = _smoothingAlpha;
       _emaRssi = _emaRssi == null ? rssi.toDouble() : (alpha * rssi + (1 - alpha) * _emaRssi!);
       _handleThreshold();
       notifyListeners();
