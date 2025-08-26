@@ -63,6 +63,11 @@ class HomeScreen extends StatelessWidget {
                   card: card,
                   message: _statusText(provider),
                 ),
+              if (provider.lastError != null)
+                _ErrorBanner(
+                  card: card,
+                  message: provider.lastError!,
+                ),
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
@@ -411,6 +416,7 @@ class _SettingsScreen extends StatelessWidget {
           ]),
           const SizedBox(height: 16),
           _Section(title: 'Discovery Filters', children: <Widget>[
+            _Tile(card: card, title: 'Ignore Filters (scan all)', trailing: Switch(value: p.ignoreFilters, onChanged: p.setIgnoreFilters)),
             _Tile(card: card, title: 'Name Prefix', trailing: const SizedBox()),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -421,6 +427,13 @@ class _SettingsScreen extends StatelessWidget {
                 decoration: const InputDecoration(border: InputBorder.none, hintText: 'e.g., ESP32-DIST', hintStyle: TextStyle(color: Colors.white54)),
                 onChanged: p.setNamePrefixFilter,
               ),
+            ),
+            const SizedBox(height: 8),
+            _Tile(card: card, title: 'Connect by ID', trailing: const SizedBox()),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16)),
+              child: _ConnectByIdRow(card: card),
             ),
           ]),
         ],
@@ -462,4 +475,51 @@ class _Tile extends StatelessWidget {
   }
 }
 
+
+class _ConnectByIdRow extends StatefulWidget {
+  const _ConnectByIdRow({required this.card});
+  final Color card;
+  @override
+  State<_ConnectByIdRow> createState() => _ConnectByIdRowState();
+}
+
+class _ConnectByIdRowState extends State<_ConnectByIdRow> {
+  late final TextEditingController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) {
+    final BluetoothProvider p = context.watch<BluetoothProvider>();
+    if ((_controller.text.isEmpty) && p.lastKnownDeviceId != null) {
+      _controller.text = p.lastKnownDeviceId!;
+    }
+    return Row(children: <Widget>[
+      Expanded(
+        child: TextField(
+          controller: _controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(border: InputBorder.none, hintText: 'AA:BB:CC:DD:EE:FF', hintStyle: TextStyle(color: Colors.white54)),
+        ),
+      ),
+      const SizedBox(width: 8),
+      ElevatedButton(
+        onPressed: () {
+          final String id = _controller.text.trim();
+          if (id.isNotEmpty) {
+            p.connectById(id);
+          }
+        },
+        child: const Text('Connect'),
+      ),
+    ]);
+  }
+}
 

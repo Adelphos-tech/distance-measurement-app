@@ -44,6 +44,7 @@ class BluetoothProvider extends ChangeNotifier {
   double _audioVolume = 0.1; // 0.0 - 1.0
   bool _autoConnectEnabled = false;
   String? _lastKnownDeviceId;
+  bool _ignoreFilters = false;
 
   int get txPowerAtOneMeter => _txPowerAtOneMeter;
   double get pathLossExponent => _pathLossExponent;
@@ -53,10 +54,13 @@ class BluetoothProvider extends ChangeNotifier {
   double get audioVolume => _audioVolume;
   bool get autoConnectEnabled => _autoConnectEnabled;
   String? get lastKnownDeviceId => _lastKnownDeviceId;
+  bool get ignoreFilters => _ignoreFilters;
 
   // Last ACK/status received from peripheral via notifications
   String? _lastAckStatus;
   String? get lastAckStatus => _lastAckStatus;
+  String? _lastError;
+  String? get lastError => _lastError;
 
   void updateCalibration({int? txPower, double? pathLossExponent}) {
     if (txPower != null) _txPowerAtOneMeter = txPower;
@@ -91,6 +95,12 @@ class BluetoothProvider extends ChangeNotifier {
     if (value) {
       _tryAutoReconnect();
     }
+  }
+
+  void setIgnoreFilters(bool value) {
+    _ignoreFilters = value;
+    notifyListeners();
+    _saveSettings();
   }
 
   StreamSubscription<List<ScanResult>>? _scanSub;
@@ -150,6 +160,7 @@ class BluetoothProvider extends ChangeNotifier {
     _minCommandInterval = Duration(milliseconds: minMs);
     _namePrefix = prefs.getString('namePrefix');
     _lastKnownDeviceId = prefs.getString('lastKnownDeviceId');
+    _ignoreFilters = prefs.getBool('ignoreFilters') ?? _ignoreFilters;
     notifyListeners();
   }
 
@@ -168,6 +179,7 @@ class BluetoothProvider extends ChangeNotifier {
     } else {
       await prefs.setString('lastKnownDeviceId', _lastKnownDeviceId!);
     }
+    await prefs.setBool('ignoreFilters', _ignoreFilters);
   }
 
   double? get latestDistanceMeters => _emaRssi == null
@@ -231,9 +243,9 @@ class BluetoothProvider extends ChangeNotifier {
     _isScanning = true;
     notifyListeners();
 
-    // Build filters if service UUID known
+    // Build filters if service UUID known (unless ignoring filters)
     final List<Guid> serviceFilters = <Guid>[];
-    if (BleUuids.preferredService != null) {
+    if (!_ignoreFilters && BleUuids.preferredService != null) {
       serviceFilters.add(BleUuids.preferredService!);
     }
     await FlutterBluePlus.startScan(
@@ -248,7 +260,7 @@ class BluetoothProvider extends ChangeNotifier {
         final String? deviceName = r.device.platformName.isNotEmpty
             ? r.device.platformName
             : r.advertisementData.advName;
-        final String? effectivePrefix = namePrefix ?? _namePrefix ?? BleUuids.namePrefix;
+        final String? effectivePrefix = _ignoreFilters ? null : (namePrefix ?? _namePrefix ?? BleUuids.namePrefix);
         if (effectivePrefix != null && (deviceName == null || !deviceName.startsWith(effectivePrefix))) {
           continue;
         }
@@ -288,7 +300,13 @@ class BluetoothProvider extends ChangeNotifier {
   Future<void> connect(DiscoveredDevice device) async {
     await stopScan();
     _connectedDevice = device.device;
-    await _bleService.connect(device.device);
+    try {
+      await _bleService.connect(device.device);
+    } catch (e) {
+      _lastError = 'Connect failed: $e';
+      notifyListeners();
+      return;
+    }
     _lastKnownDeviceId = device.id;
     _saveSettings();
     // subscribe to notifications for ACK/status
@@ -304,23 +322,49 @@ class BluetoothProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> connectById(String deviceId, {Duration timeout = const Duration(seconds: 15)}) async {
+    _lastError = null;
+    notifyListeners();
+    final Completer<void> done = Completer<void>();
+    StreamSubscription<List<ScanResult>>? sub;
+    Timer? to;
+    await stopScan();
+    await FlutterBluePlus.startScan(timeout: timeout, androidUsesFineLocation: true);
+    sub = FlutterBluePlus.onScanResults.listen((List<ScanResult> results) async {
+      for (final ScanResult r in results) {
+        if (r.device.remoteId.str == deviceId) {
+          await stopScan();
+          await sub?.cancel();
+          to?.cancel();
+          await connect(DiscoveredDevice(id: r.device.remoteId.str, name: r.device.platformName.isNotEmpty ? r.device.platformName : (r.advertisementData.advName ?? 'Unknown'), rssi: r.rssi, device: r.device));
+          if (!done.isCompleted) done.complete();
+          return;
+        }
+      }
+    }, onError: (Object e) async {
+      _lastError = 'Scan error: $e';
+      notifyListeners();
+      if (!done.isCompleted) done.complete();
+    }, onDone: () async {
+      if (!done.isCompleted) done.complete();
+    });
+    to = Timer(timeout, () async {
+      await stopScan();
+      await sub?.cancel();
+      if (_connectedDevice == null) {
+        _lastError = 'Auto-reconnect timeout';
+        notifyListeners();
+      }
+      if (!done.isCompleted) done.complete();
+    });
+    await done.future;
+  }
+
   Future<void> _tryAutoReconnect() async {
     if (!_autoConnectEnabled || _lastKnownDeviceId == null) return;
     // if already connected, skip
     if (_connectedDevice != null) return;
-    // scan briefly and connect when found
-    await startScan();
-    // The scan listener updates _devices; try to find device and connect
-    DiscoveredDevice? target;
-    for (final DiscoveredDevice d in _devices) {
-      if (d.id == _lastKnownDeviceId) {
-        target = d;
-        break;
-      }
-    }
-    if (target != null) {
-      await connect(target);
-    }
+    await connectById(_lastKnownDeviceId!);
   }
 
   void _subscribeRssi(BluetoothDevice device) {
