@@ -17,29 +17,36 @@ class BleService {
     // If already connected, skip connect call
     final BluetoothConnectionState current = await device.connectionState.first;
     if (current != BluetoothConnectionState.connected) {
-      try {
-        await device.connect(timeout: const Duration(seconds: 15), autoConnect: false);
-      } catch (e) {
-        // If already connected by the OS, continue
-        if (kDebugMode) {
-          print('connect error: $e');
+      // Attempt connect with a couple of retries
+      int attempts = 0;
+      while (attempts < 2) {
+        attempts += 1;
+        try {
+          await device.connect(timeout: const Duration(seconds: 15), autoConnect: false);
+        } catch (e) {
+          if (kDebugMode) {
+            print('connect attempt $attempts error: $e');
+          }
         }
-      }
-      // Wait for connected state
-      try {
-        await device.connectionState.firstWhere(
-          (BluetoothConnectionState s) => s == BluetoothConnectionState.connected,
-        ).timeout(const Duration(seconds: 15));
-      } catch (e) {
-        if (kDebugMode) {
-          print('connection state wait failed: $e');
+        // Wait for connected state
+        try {
+          await device.connectionState
+              .firstWhere((BluetoothConnectionState s) => s == BluetoothConnectionState.connected)
+              .timeout(const Duration(seconds: 15));
+          break; // connected
+        } catch (e) {
+          if (kDebugMode) {
+            print('wait connected attempt $attempts failed: $e');
+          }
         }
       }
     }
 
-    try {
-      await device.discoverServices();
-    } catch (_) {}
+    // Confirm connected before discovering services
+    final BluetoothConnectionState st = await device.connectionState.first;
+    if (st != BluetoothConnectionState.connected) {
+      throw Exception('Not connected');
+    }
     await _findWritableCharacteristic(device);
     // Request larger MTU on Android for stability when writing commands
     try {
