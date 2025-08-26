@@ -377,6 +377,9 @@ class BluetoothProvider extends ChangeNotifier {
       _emaRssi = _emaRssi == null ? rssi.toDouble() : (alpha * rssi + (1 - alpha) * _emaRssi!);
       _handleThreshold();
       notifyListeners();
+    }, onError: (Object e) {
+      _lastError = 'RSSI read failed: $e';
+      notifyListeners();
     });
   }
 

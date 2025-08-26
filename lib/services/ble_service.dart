@@ -128,13 +128,15 @@ class BleService {
   }
 
   Timer? _rssiTimer;
-  void startRssiPolling(BluetoothDevice device, void Function(int rssi) onRssi) {
+  void startRssiPolling(BluetoothDevice device, void Function(int rssi) onRssi, {void Function(Object error)? onError}) {
     _rssiTimer?.cancel();
     _rssiTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       try {
         final int rssi = await device.readRssi();
         onRssi(rssi);
-      } catch (_) {}
+      } catch (Object e) {
+        if (onError != null) onError(e);
+      }
     });
   }
 
