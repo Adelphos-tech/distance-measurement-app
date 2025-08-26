@@ -90,11 +90,19 @@ class BluetoothProvider extends ChangeNotifier {
   int? _latestRssi;
   int? get latestRssi => _latestRssi;
 
-  double? get latestDistanceMeters => _latestRssi == null
+  // RSSI smoothing (exponential moving average)
+  double? _emaRssi;
+  // Hysteresis: percent of threshold for exit band (e.g., 10%)
+  double _hysteresisFraction = 0.1;
+  // Rate limit for command sends
+  DateTime _lastCommandSentAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Duration _minCommandInterval = const Duration(milliseconds: 800);
+
+  double? get latestDistanceMeters => _emaRssi == null
       ? null
       : DistanceUtils.estimateDistanceMeters(
           txPower: _txPowerAtOneMeter,
-          rssi: _latestRssi!,
+          rssi: _emaRssi!.round(),
           pathLossExponent: _pathLossExponent,
         );
 
@@ -212,6 +220,9 @@ class BluetoothProvider extends ChangeNotifier {
     _rssiSub = Stream<int>.periodic(const Duration(seconds: 2)).listen((_) {});
     _bleService.startRssiPolling(device, (int rssi) {
       _latestRssi = rssi;
+      // EMA smoothing: ema = alpha * rssi + (1-alpha) * prev
+      const double alpha = 0.3;
+      _emaRssi = _emaRssi == null ? rssi.toDouble() : (alpha * rssi + (1 - alpha) * _emaRssi!);
       _handleThreshold();
       notifyListeners();
     });
@@ -221,13 +232,30 @@ class BluetoothProvider extends ChangeNotifier {
     final double? distanceFeet = latestDistanceFeet;
     if (distanceFeet == null) return;
 
-    final bool inRange = distanceFeet <= _thresholdFeet;
+    // Hysteresis bands
+    final double enterThreshold = _thresholdFeet; // go in-range when <= this
+    final double exitThreshold = _thresholdFeet * (1 + _hysteresisFraction); // go out-of-range when > this
+
+    bool inRange;
+    if (_lastInRange) {
+      inRange = distanceFeet <= exitThreshold;
+    } else {
+      inRange = distanceFeet <= enterThreshold;
+    }
+
     if (inRange != _lastInRange && _connectedDevice != null) {
+      // rate limit
+      final DateTime now = DateTime.now();
+      if (now.difference(_lastCommandSentAt) < _minCommandInterval) {
+        _lastInRange = inRange; // update state but skip command
+        return;
+      }
       // Send appropriate command when crossing threshold
       final Uint8List command = inRange
           ? Uint8List.fromList(Commands.inRange)
           : Uint8List.fromList(Commands.crossedRange);
       _bleService.sendCommand(command);
+      _lastCommandSentAt = now;
       // Optionally play feedback; platform integration for audio can be added later
     }
     _lastInRange = inRange;

@@ -5,6 +5,7 @@ class BleUuids {
   // Leave as null to auto-discover first writable characteristic.
   static const Guid? preferredService = null; // e.g., Guid("0000ffe0-0000-1000-8000-00805f9b34fb")
   static const Guid? preferredWriteCharacteristic = null; // e.g., Guid("0000ffe1-0000-1000-8000-00805f9b34fb")
+  static const Guid? preferredNotifyCharacteristic = null; // e.g., Guid("0000ffe2-0000-1000-8000-00805f9b34fb")
 }
 
 

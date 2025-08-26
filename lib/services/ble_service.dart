@@ -8,6 +8,7 @@ class BleService {
 
   BluetoothDevice? _device;
   BluetoothCharacteristic? _writeCharacteristic;
+  BluetoothCharacteristic? _notifyCharacteristic;
 
   // Replace with actual service/characteristic UUIDs if the ESP exposes GATT services
   // For now we will discover all services and pick the first writable characteristic
@@ -49,39 +50,55 @@ class BleService {
   Future<void> _findWritableCharacteristic(BluetoothDevice device) async {
     final List<BluetoothService> services = await device.discoverServices();
     // Prefer configured service/characteristic when provided
-    if (BleUuids.preferredService != null || BleUuids.preferredWriteCharacteristic != null) {
+    if (BleUuids.preferredService != null || BleUuids.preferredWriteCharacteristic != null || BleUuids.preferredNotifyCharacteristic != null) {
       for (final BluetoothService s in services) {
         if (BleUuids.preferredService != null && s.uuid != BleUuids.preferredService) continue;
         for (final BluetoothCharacteristic c in s.characteristics) {
-          if (BleUuids.preferredWriteCharacteristic != null && c.uuid != BleUuids.preferredWriteCharacteristic) continue;
-          final bool canWrite = c.properties.write || c.properties.writeWithoutResponse;
-          if (canWrite) {
+          final bool isPreferredWrite = BleUuids.preferredWriteCharacteristic != null && c.uuid == BleUuids.preferredWriteCharacteristic;
+          final bool isPreferredNotify = BleUuids.preferredNotifyCharacteristic != null && c.uuid == BleUuids.preferredNotifyCharacteristic;
+          if (isPreferredWrite && (c.properties.write || c.properties.writeWithoutResponse)) {
             _writeCharacteristic = c;
-            return;
+          }
+          if (isPreferredNotify && c.properties.notify) {
+            _notifyCharacteristic = c;
           }
         }
+        if (_writeCharacteristic != null && (BleUuids.preferredNotifyCharacteristic == null || _notifyCharacteristic != null)) return;
       }
     }
     for (final BluetoothService service in services) {
       for (final BluetoothCharacteristic c in service.characteristics) {
-        final bool canWrite = c.properties.write || c.properties.writeWithoutResponse;
-        if (canWrite) {
+        if (_writeCharacteristic == null && (c.properties.write || c.properties.writeWithoutResponse)) {
           _writeCharacteristic = c;
-          return;
+        }
+        if (_notifyCharacteristic == null && c.properties.notify) {
+          _notifyCharacteristic = c;
         }
       }
+      if (_writeCharacteristic != null && _notifyCharacteristic != null) break;
     }
     if (kDebugMode) {
       print('No writable characteristic found');
     }
   }
 
+  StreamSubscription<List<int>>? _notifySub;
+  void subscribeNotifications(void Function(List<int> data) onData) {
+    final BluetoothCharacteristic? c = _notifyCharacteristic;
+    if (c == null) return;
+    _notifySub?.cancel();
+    c.setNotifyValue(true);
+    _notifySub = c.onValueReceived.listen(onData, onError: (_) {});
+  }
+
   Future<void> disconnect() async {
     try {
+      await _notifySub?.cancel();
       await _device?.disconnect();
     } finally {
       _device = null;
       _writeCharacteristic = null;
+      _notifyCharacteristic = null;
     }
   }
 
