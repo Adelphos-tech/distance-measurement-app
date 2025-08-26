@@ -21,7 +21,7 @@ class BluetoothProvider extends ChangeNotifier {
       _adapterState = s;
       notifyListeners();
     });
-    _loadSettings();
+    _loadSettings().then((_) => _tryAutoReconnect());
   }
 
   final BleService _bleService = BleService();
@@ -43,6 +43,7 @@ class BluetoothProvider extends ChangeNotifier {
   bool _audioFeedbackEnabled = true;
   double _audioVolume = 0.1; // 0.0 - 1.0
   bool _autoConnectEnabled = false;
+  String? _lastKnownDeviceId;
 
   int get txPowerAtOneMeter => _txPowerAtOneMeter;
   double get pathLossExponent => _pathLossExponent;
@@ -51,6 +52,7 @@ class BluetoothProvider extends ChangeNotifier {
   bool get audioFeedbackEnabled => _audioFeedbackEnabled;
   double get audioVolume => _audioVolume;
   bool get autoConnectEnabled => _autoConnectEnabled;
+  String? get lastKnownDeviceId => _lastKnownDeviceId;
 
   // Last ACK/status received from peripheral via notifications
   String? _lastAckStatus;
@@ -85,6 +87,10 @@ class BluetoothProvider extends ChangeNotifier {
   void setAutoConnect(bool value) {
     _autoConnectEnabled = value;
     notifyListeners();
+    _saveSettings();
+    if (value) {
+      _tryAutoReconnect();
+    }
   }
 
   StreamSubscription<List<ScanResult>>? _scanSub;
@@ -143,6 +149,7 @@ class BluetoothProvider extends ChangeNotifier {
     final int minMs = prefs.getInt('minCommandIntervalMs') ?? _minCommandInterval.inMilliseconds;
     _minCommandInterval = Duration(milliseconds: minMs);
     _namePrefix = prefs.getString('namePrefix');
+    _lastKnownDeviceId = prefs.getString('lastKnownDeviceId');
     notifyListeners();
   }
 
@@ -155,6 +162,11 @@ class BluetoothProvider extends ChangeNotifier {
       await prefs.remove('namePrefix');
     } else {
       await prefs.setString('namePrefix', _namePrefix!);
+    }
+    if (_lastKnownDeviceId == null) {
+      await prefs.remove('lastKnownDeviceId');
+    } else {
+      await prefs.setString('lastKnownDeviceId', _lastKnownDeviceId!);
     }
   }
 
@@ -277,6 +289,8 @@ class BluetoothProvider extends ChangeNotifier {
     await stopScan();
     _connectedDevice = device.device;
     await _bleService.connect(device.device);
+    _lastKnownDeviceId = device.id;
+    _saveSettings();
     // subscribe to notifications for ACK/status
     _bleService.subscribeNotifications(_onNotifyData);
     _subscribeRssi(device.device);
@@ -288,6 +302,25 @@ class BluetoothProvider extends ChangeNotifier {
     await _bleService.disconnect();
     _connectedDevice = null;
     notifyListeners();
+  }
+
+  Future<void> _tryAutoReconnect() async {
+    if (!_autoConnectEnabled || _lastKnownDeviceId == null) return;
+    // if already connected, skip
+    if (_connectedDevice != null) return;
+    // scan briefly and connect when found
+    await startScan();
+    // The scan listener updates _devices; try to find device and connect
+    DiscoveredDevice? target;
+    for (final DiscoveredDevice d in _devices) {
+      if (d.id == _lastKnownDeviceId) {
+        target = d;
+        break;
+      }
+    }
+    if (target != null) {
+      await connect(target);
+    }
   }
 
   void _subscribeRssi(BluetoothDevice device) {
