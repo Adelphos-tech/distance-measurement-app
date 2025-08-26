@@ -6,6 +6,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/ble_service.dart';
 import '../utils/distance.dart';
@@ -20,6 +21,7 @@ class BluetoothProvider extends ChangeNotifier {
       _adapterState = s;
       notifyListeners();
     });
+    _loadSettings();
   }
 
   final BleService _bleService = BleService();
@@ -113,21 +115,47 @@ class BluetoothProvider extends ChangeNotifier {
     _emaRssi = null;
     _smoothingAlpha = a;
     notifyListeners();
+    _saveSettings();
   }
 
   void setHysteresisFraction(double fraction) {
     _hysteresisFraction = fraction.clamp(0.0, 1.0);
     notifyListeners();
+    _saveSettings();
   }
 
   void setMinCommandInterval(Duration d) {
     _minCommandInterval = d;
     notifyListeners();
+    _saveSettings();
   }
 
   void setNamePrefixFilter(String? prefix) {
     _namePrefix = (prefix == null || prefix.isEmpty) ? null : prefix;
     notifyListeners();
+    _saveSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _smoothingAlpha = prefs.getDouble('smoothingAlpha') ?? _smoothingAlpha;
+    _hysteresisFraction = prefs.getDouble('hysteresisFraction') ?? _hysteresisFraction;
+    final int minMs = prefs.getInt('minCommandIntervalMs') ?? _minCommandInterval.inMilliseconds;
+    _minCommandInterval = Duration(milliseconds: minMs);
+    _namePrefix = prefs.getString('namePrefix');
+    notifyListeners();
+  }
+
+  Future<void> _saveSettings() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('smoothingAlpha', _smoothingAlpha);
+    await prefs.setDouble('hysteresisFraction', _hysteresisFraction);
+    await prefs.setInt('minCommandIntervalMs', _minCommandInterval.inMilliseconds);
+    if (_namePrefix == null) {
+      await prefs.remove('namePrefix');
+    } else {
+      await prefs.setString('namePrefix', _namePrefix!);
+    }
   }
 
   double? get latestDistanceMeters => _emaRssi == null
