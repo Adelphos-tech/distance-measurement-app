@@ -49,6 +49,10 @@ class BluetoothProvider extends ChangeNotifier {
   double get audioVolume => _audioVolume;
   bool get autoConnectEnabled => _autoConnectEnabled;
 
+  // Last ACK/status received from peripheral via notifications
+  String? _lastAckStatus;
+  String? get lastAckStatus => _lastAckStatus;
+
   void updateCalibration({int? txPower, double? pathLossExponent}) {
     if (txPower != null) _txPowerAtOneMeter = txPower;
     if (pathLossExponent != null) _pathLossExponent = pathLossExponent;
@@ -204,6 +208,8 @@ class BluetoothProvider extends ChangeNotifier {
     await stopScan();
     _connectedDevice = device.device;
     await _bleService.connect(device.device);
+    // subscribe to notifications for ACK/status
+    _bleService.subscribeNotifications(_onNotifyData);
     _subscribeRssi(device.device);
     notifyListeners();
   }
@@ -226,6 +232,18 @@ class BluetoothProvider extends ChangeNotifier {
       _handleThreshold();
       notifyListeners();
     });
+  }
+
+  void _onNotifyData(List<int> data) {
+    // Expected ACK format: 0x5E 0x80 <cmd> <status>
+    if (data.isEmpty) return;
+    if (data.length >= 4 && data[0] == Commands.security && data[1] == 0x80) {
+      final int cmd = data[2];
+      final int status = data[3];
+      final bool ok = status == 0x00;
+      _lastAckStatus = 'ACK for 0x${cmd.toRadixString(16).padLeft(2, '0')}: ' + (ok ? 'OK' : 'ERR 0x${status.toRadixString(16).padLeft(2, '0')}');
+      notifyListeners();
+    }
   }
 
   void _handleThreshold() {

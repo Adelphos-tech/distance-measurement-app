@@ -53,6 +53,11 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
               _GaugeCard(card: card, accent: accent),
               const SizedBox(height: 16),
+              if (provider.lastAckStatus != null)
+                _ErrorBanner(
+                  card: card,
+                  message: provider.lastAckStatus!,
+                ),
               if (provider.connectedDevice == null)
                 _ErrorBanner(
                   card: card,
