@@ -14,16 +14,16 @@ class HomeScreen extends StatelessWidget {
     final BluetoothProvider provider = context.watch<BluetoothProvider>();
     // Threshold is controlled from Settings screen; no controller needed here
 
-    final Color bgTop = const Color(0xFF0B221A);
-    final Color bgBottom = const Color(0xFF0F2F22);
-    final Color card = const Color(0xFF143827);
-    final Color accent = const Color(0xFF2DC97A);
+    const Color bgTop = Color(0xFF0B221A);
+    const Color bgBottom = Color(0xFF0F2F22);
+    const Color card = Color(0xFF143827);
+    const Color accent = Color(0xFF2DC97A);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
@@ -66,7 +66,7 @@ class HomeScreen extends StatelessWidget {
                       onPressed: () => _openDevices(context),
                       icon: Icons.search,
                       label: 'Scan Devices',
-                      gradient: LinearGradient(colors: <Color>[accent, accent.withOpacity(0.8)]),
+                      gradient: LinearGradient(colors: <Color>[accent, accent.withValues(alpha: 0.8)]),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -78,6 +78,7 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -104,9 +105,9 @@ class _GaugeCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: card.withOpacity(0.7),
+        color: card.withValues(alpha: 0.7),
         boxShadow: <BoxShadow>[
-          BoxShadow(color: glow.withOpacity(0.2), blurRadius: 24, spreadRadius: 2, offset: const Offset(0, 10)),
+          BoxShadow(color: glow.withValues(alpha: 0.2), blurRadius: 24, spreadRadius: 2, offset: const Offset(0, 10)),
         ],
       ),
       child: Column(
@@ -132,7 +133,7 @@ class _GaugeCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.white12),
                       ),
@@ -224,7 +225,7 @@ class _RingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawCircle(c, r, bg);
 
-    final SweepGradient grad = SweepGradient(colors: <Color>[accent.withOpacity(0.2), accent, accent], stops: const <double>[0.0, 0.9, 1.0]);
+    final SweepGradient grad = SweepGradient(colors: <Color>[accent.withValues(alpha: 0.2), accent, accent], stops: const <double>[0.0, 0.9, 1.0]);
     final Paint fg = Paint()
       ..shader = grad.createShader(Rect.fromCircle(center: c, radius: r))
       ..style = PaintingStyle.stroke
@@ -277,7 +278,7 @@ class _GlassButton extends StatelessWidget {
           onTap: onPressed,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
             alignment: Alignment.center,
             child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
