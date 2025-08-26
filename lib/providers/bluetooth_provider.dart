@@ -103,6 +103,7 @@ class BluetoothProvider extends ChangeNotifier {
   // Rate limit for command sends
   DateTime _lastCommandSentAt = DateTime.fromMillisecondsSinceEpoch(0);
   Duration _minCommandInterval = const Duration(milliseconds: 800);
+  String? _namePrefix; // optional runtime filter
 
   // Expose tuning APIs
   void setSmoothingAlpha(double alpha) {
@@ -111,14 +112,22 @@ class BluetoothProvider extends ChangeNotifier {
     // reinitialize smoothing to avoid long tail if alpha changes drastically
     _emaRssi = null;
     _smoothingAlpha = a;
+    notifyListeners();
   }
 
   void setHysteresisFraction(double fraction) {
     _hysteresisFraction = fraction.clamp(0.0, 1.0);
+    notifyListeners();
   }
 
   void setMinCommandInterval(Duration d) {
     _minCommandInterval = d;
+    notifyListeners();
+  }
+
+  void setNamePrefixFilter(String? prefix) {
+    _namePrefix = (prefix == null || prefix.isEmpty) ? null : prefix;
+    notifyListeners();
   }
 
   double? get latestDistanceMeters => _emaRssi == null
@@ -143,6 +152,12 @@ class BluetoothProvider extends ChangeNotifier {
   }
 
   bool _lastInRange = true;
+
+  // Getters for settings UI
+  double get smoothingAlpha => _smoothingAlpha;
+  double get hysteresisFraction => _hysteresisFraction;
+  Duration get minCommandInterval => _minCommandInterval;
+  String? get namePrefixFilter => _namePrefix;
 
   Future<bool> ensurePermissions() async {
     if (Platform.isIOS) {
@@ -193,7 +208,7 @@ class BluetoothProvider extends ChangeNotifier {
         final String? deviceName = r.device.platformName.isNotEmpty
             ? r.device.platformName
             : r.advertisementData.advName;
-        final String? effectivePrefix = namePrefix ?? BleUuids.namePrefix;
+        final String? effectivePrefix = namePrefix ?? _namePrefix ?? BleUuids.namePrefix;
         if (effectivePrefix != null && (deviceName == null || !deviceName.startsWith(effectivePrefix))) {
           continue;
         }

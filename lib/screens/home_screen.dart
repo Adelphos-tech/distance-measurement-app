@@ -388,6 +388,41 @@ class _SettingsScreen extends StatelessWidget {
             _Tile(card: card, title: 'Auto-Connect to Saved Devices', trailing: Switch(value: p.autoConnectEnabled, onChanged: p.setAutoConnect)),
             _Tile(card: card, title: 'Auto-Connect Status', trailing: Icon(p.autoConnectEnabled ? Icons.check_circle : Icons.cancel, color: p.autoConnectEnabled ? Colors.greenAccent : Colors.redAccent)),
           ]),
+          const SizedBox(height: 16),
+          _Section(title: 'Signal Processing', children: <Widget>[
+            _Tile(card: card, title: 'Smoothing Alpha', trailing: Text(p.smoothingAlpha.toStringAsFixed(2), style: const TextStyle(color: Colors.white))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16)),
+              child: Slider(value: p.smoothingAlpha, min: 0.0, max: 1.0, onChanged: (double v) => p.setSmoothingAlpha(v)),
+            ),
+            _Tile(card: card, title: 'Hysteresis (%)', trailing: Text('${(p.hysteresisFraction * 100).round()}%', style: const TextStyle(color: Colors.white))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16)),
+              child: Slider(value: p.hysteresisFraction, min: 0.0, max: 0.5, onChanged: (double v) => p.setHysteresisFraction(v)),
+            ),
+            _Tile(card: card, title: 'Min Command Interval (ms)', trailing: Text('${p.minCommandInterval.inMilliseconds}', style: const TextStyle(color: Colors.white))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16)),
+              child: Slider(value: p.minCommandInterval.inMilliseconds.toDouble(), min: 200, max: 3000, onChanged: (double v) => p.setMinCommandInterval(Duration(milliseconds: v.round()))),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _Section(title: 'Discovery Filters', children: <Widget>[
+            _Tile(card: card, title: 'Name Prefix', trailing: const SizedBox()),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16)),
+              child: TextField(
+                controller: TextEditingController(text: p.namePrefixFilter ?? ''),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(border: InputBorder.none, hintText: 'e.g., ESP32-DIST', hintStyle: TextStyle(color: Colors.white54)),
+                onChanged: p.setNamePrefixFilter,
+              ),
+            ),
+          ]),
         ],
       ),
     );
